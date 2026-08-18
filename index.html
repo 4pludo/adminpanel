@@ -993,6 +993,11 @@
 
     const AUTHORIZED_ADMIN_UID = 'ktC19AjptoShu7S7nLVBqKrN8lT2';
 
+    let fsUsersUnsub = null;
+    let fsDepositsUnsub = null;
+    let fsWithdrawalsUnsub = null;
+    let fsConfigUnsub = null;
+
     // Initialize Login & Session Check with Live Firebase Database Listeners
     window.addEventListener('DOMContentLoaded', () => {
       const loggedIn = localStorage.getItem('admin_logged_in');
@@ -1013,6 +1018,7 @@
                 localStorage.setItem('admin_logged_in', 'true');
                 localStorage.setItem('admin_uid', user.uid);
                 document.getElementById('loginOverlay').style.display = 'none';
+                setupLiveFirebaseListeners();
               } else {
                 firebase.auth().signOut();
                 localStorage.removeItem('admin_logged_in');
@@ -1024,6 +1030,7 @@
                 localStorage.setItem('admin_logged_in', 'true');
                 localStorage.setItem('admin_uid', user.uid);
                 document.getElementById('loginOverlay').style.display = 'none';
+                setupLiveFirebaseListeners();
               }
             });
           }
@@ -1313,85 +1320,20 @@
     function setupLiveFirebaseListeners() {
       if (typeof firebase === 'undefined') return;
 
+      // Clean up previous listeners if any to prevent duplicate memory leaks or stale unauth streams
+      if (fsUsersUnsub) { fsUsersUnsub(); fsUsersUnsub = null; }
+      if (fsDepositsUnsub) { fsDepositsUnsub(); fsDepositsUnsub = null; }
+      if (fsWithdrawalsUnsub) { fsWithdrawalsUnsub(); fsWithdrawalsUnsub = null; }
+      if (fsConfigUnsub) { fsConfigUnsub(); fsConfigUnsub = null; }
+
       // ==========================================
       // A. CLOUD FIRESTORE REALTIME LISTENERS
       // ==========================================
       if (firebase.firestore) {
         const dbFs = firebase.firestore();
 
-        // 1. Firestore Users Collection (/users) - Primary Source
-        dbFs.collection('users').onSnapshot((snapshot) => {
-          if (snapshot && !snapshot.empty) {
-            const fsUsers = [];
-            snapshot.forEach(doc => {
-              const u = doc.data();
-              const userName = u.name || u.displayName || (u.email ? u.email.split('@')[0] : '') || u.phoneNumber || ('Player #' + doc.id.slice(-4));
-              fsUsers.push({
-                id: doc.id || u.uid || u.userId,
-                name: userName,
-                email: u.email || 'N/A',
-                mobile: u.phoneNumber || u.mobile || u.email || 'N/A',
-                depBal: Number(u.depositBalance || 0),
-                winBal: Number(u.winningBalance || 0),
-                matches: Number(u.totalMatches || 0),
-                winRate: u.winRate || (u.totalMatches > 0 ? Math.round(((u.matchesWon || 0) / u.totalMatches) * 100) + '%' : '0%')
-              });
-            });
-
-            usersList = fsUsers;
-            setStored('admin_users', usersList);
-            renderAllData();
-          }
-        }, err => console.warn('Firestore users notice (Check Firebase Rules):', err.message));
-
-        // 2. Firestore Deposits Collection (/deposits) - Primary Source
-        dbFs.collection('deposits').onSnapshot((snapshot) => {
-          if (snapshot && !snapshot.empty) {
-            const fsDeposits = [];
-            snapshot.forEach(doc => {
-              const d = doc.data();
-              fsDeposits.push({
-                id: doc.id || d.id,
-                userId: d.userId || '',
-                name: d.name || d.userName || d.userEmail || ('User ' + (d.userId ? d.userId.slice(-4) : '')),
-                mobile: d.mobile || d.userEmail || d.phoneNumber || 'N/A',
-                amount: Number(d.amount || 0),
-                utr: d.utr || d.txnId || 'UTR' + doc.id,
-                date: d.date || (d.createdAt ? new Date(d.createdAt).toLocaleString() : 'Recent'),
-                status: d.status || 'Pending'
-              });
-            });
-            depositsList = fsDeposits;
-            setStored('admin_deposits', depositsList);
-            renderAllData();
-          }
-        }, err => console.warn('Firestore deposits notice (Check Firebase Rules):', err.message));
-
-        // 3. Firestore Withdrawals Collection (/withdrawals) - Primary Source
-        dbFs.collection('withdrawals').onSnapshot((snapshot) => {
-          if (snapshot && !snapshot.empty) {
-            const fsWithdrawals = [];
-            snapshot.forEach(doc => {
-              const w = doc.data();
-              fsWithdrawals.push({
-                id: doc.id || w.id,
-                userId: w.userId || '',
-                name: w.name || w.userName || w.userEmail || ('User ' + (w.userId ? w.userId.slice(-4) : '')),
-                mobile: w.mobile || w.userEmail || w.phoneNumber || 'N/A',
-                details: w.details || w.upiId || 'Bank/UPI',
-                amount: Number(w.amount || 0),
-                date: w.date || (w.createdAt ? new Date(w.createdAt).toLocaleString() : 'Recent'),
-                status: w.status || 'Pending'
-              });
-            });
-            withdrawalsList = fsWithdrawals;
-            setStored('admin_withdrawals', withdrawalsList);
-            renderAllData();
-          }
-        }, err => console.warn('Firestore withdrawals notice (Check Firebase Rules):', err.message));
-
-        // 4. Firestore System Config Listener (/system_config/app_info)
-        dbFs.collection('system_config').doc('app_info').onSnapshot((docSnap) => {
+        // 1. Firestore System Config Listener (/system_config/app_info) - Public Read
+        fsConfigUnsub = dbFs.collection('system_config').doc('app_info').onSnapshot((docSnap) => {
           if (docSnap && docSnap.exists) {
             const data = docSnap.data();
             const upi = data.depositupi || data.depositUpi || '4pludo@upi';
@@ -1420,6 +1362,84 @@
             if (elMaintMsg && data.maintenanceMessage && !elMaintMsg.matches(':focus')) elMaintMsg.value = data.maintenanceMessage;
           }
         }, err => console.warn('Firestore system_config notice (Check Firebase Rules):', err.message));
+
+        // Verify Firebase Auth state before requesting protected collections
+        const currentUser = firebase.auth ? firebase.auth().currentUser : null;
+        if (!currentUser) {
+          console.warn('Firestore notice: Waiting for Firebase Auth authentication before attaching protected listeners (users, deposits, withdrawals).');
+          return;
+        }
+
+        // 2. Firestore Users Collection (/users) - Primary Source
+        fsUsersUnsub = dbFs.collection('users').onSnapshot((snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            const fsUsers = [];
+            snapshot.forEach(doc => {
+              const u = doc.data();
+              const userName = u.name || u.displayName || (u.email ? u.email.split('@')[0] : '') || u.phoneNumber || ('Player #' + doc.id.slice(-4));
+              fsUsers.push({
+                id: doc.id || u.uid || u.userId,
+                name: userName,
+                email: u.email || 'N/A',
+                mobile: u.phoneNumber || u.mobile || u.email || 'N/A',
+                depBal: Number(u.depositBalance || 0),
+                winBal: Number(u.winningBalance || 0),
+                matches: Number(u.totalMatches || 0),
+                winRate: u.winRate || (u.totalMatches > 0 ? Math.round(((u.matchesWon || 0) / u.totalMatches) * 100) + '%' : '0%')
+              });
+            });
+
+            usersList = fsUsers;
+            setStored('admin_users', usersList);
+            renderAllData();
+          }
+        }, err => console.warn('Firestore users notice (Check Firebase Rules):', err.message));
+
+        // 3. Firestore Deposits Collection (/deposits) - Primary Source
+        fsDepositsUnsub = dbFs.collection('deposits').onSnapshot((snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            const fsDeposits = [];
+            snapshot.forEach(doc => {
+              const d = doc.data();
+              fsDeposits.push({
+                id: doc.id || d.id,
+                userId: d.userId || '',
+                name: d.name || d.userName || d.userEmail || ('User ' + (d.userId ? d.userId.slice(-4) : '')),
+                mobile: d.mobile || d.userEmail || d.phoneNumber || 'N/A',
+                amount: Number(d.amount || 0),
+                utr: d.utr || d.txnId || 'UTR' + doc.id,
+                date: d.date || (d.createdAt ? new Date(d.createdAt).toLocaleString() : 'Recent'),
+                status: d.status || 'Pending'
+              });
+            });
+            depositsList = fsDeposits;
+            setStored('admin_deposits', depositsList);
+            renderAllData();
+          }
+        }, err => console.warn('Firestore deposits notice (Check Firebase Rules):', err.message));
+
+        // 4. Firestore Withdrawals Collection (/withdrawals) - Primary Source
+        fsWithdrawalsUnsub = dbFs.collection('withdrawals').onSnapshot((snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            const fsWithdrawals = [];
+            snapshot.forEach(doc => {
+              const w = doc.data();
+              fsWithdrawals.push({
+                id: doc.id || w.id,
+                userId: w.userId || '',
+                name: w.name || w.userName || w.userEmail || ('User ' + (w.userId ? w.userId.slice(-4) : '')),
+                mobile: w.mobile || w.userEmail || w.phoneNumber || 'N/A',
+                details: w.details || w.upiId || 'Bank/UPI',
+                amount: Number(w.amount || 0),
+                date: w.date || (w.createdAt ? new Date(w.createdAt).toLocaleString() : 'Recent'),
+                status: w.status || 'Pending'
+              });
+            });
+            withdrawalsList = fsWithdrawals;
+            setStored('admin_withdrawals', withdrawalsList);
+            renderAllData();
+          }
+        }, err => console.warn('Firestore withdrawals notice (Check Firebase Rules):', err.message));
       }
 
       // ==========================================
