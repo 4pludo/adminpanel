@@ -538,7 +538,6 @@
         Portal</p>
 
       <form id="loginForm">
-        <input type="hidden" id="adminUid" value="ktC19AjptoShu7S7nLVBqKrN8lT2">
         <div class="form-group">
           <label><i class="fa-solid fa-envelope"></i> ADMIN EMAIL</label>
           <input type="email" id="adminEmail" class="form-control" placeholder="Enter your registered Admin Email"
@@ -602,12 +601,12 @@
         <p id="tabDesc">Live 4P Ludo real cash management & statistics</p>
       </div>
       <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="status-badge"
-          style="border-color: var(--gold); color: var(--gold); background: rgba(255, 214, 0, 0.1);">
-          <i class="fa-solid fa-shield-halved"></i> ADMIN PORTAL
-        </div>
+        <button onclick="clearAllCacheAndRefreshData()" class="btn-action"
+          style="background: rgba(255, 214, 0, 0.15); border: 1.5px solid var(--gold); color: var(--gold); padding: 8px 16px; border-radius: 20px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; box-shadow: 0 0 10px rgba(255, 214, 0, 0.2); transition: all 0.2s ease;">
+          <i class="fa-solid fa-rotate-right"></i> CLEAR CACHE & REFRESH DATA
+        </button>
         <div class="status-badge">
-          <i class="fa-solid fa-circle"></i> SYSTEM LIVE • NO CACHE CLEAR
+          <i class="fa-solid fa-circle"></i> SYSTEM LIVE
         </div>
       </div>
     </div>
@@ -680,6 +679,7 @@
                 <th>Mobile</th>
                 <th>Deposit Bal</th>
                 <th>Winning Bal</th>
+                <th>Bonus Bal 🎁</th>
                 <th>Win Rate</th>
                 <th>Action</th>
               </tr>
@@ -861,8 +861,8 @@
       </div>
     </div>
 
-    <!-- TAB: NOTIFICATIONS & OFFERS -->
-    <div id="notificationsTab" class="tab-content">
+    <!-- TAB 8: NOTIFICATIONS & OFFERS -->
+    <div id="tab-notifications" class="tab-content">
       <div class="panel-card">
         <div class="panel-header">
           <h2><i class="fa-solid fa-paper-plane" style="color: var(--gold); margin-right: 8px;"></i> Broadcast Offers & Push Notifications</h2>
@@ -953,7 +953,7 @@
 
   <script>
     // --- PERSISTENT DATA ENGINE (No Cache Loss on Refresh) ---
-    const DEFAULT_ADMIN_UPI = 'pay.4pludo@upi';
+    const DEFAULT_ADMIN_UPI = '';
 
     // Real Live Data Containers (Initializes empty until loaded from Firebase Realtime Database)
     const INITIAL_USERS = [];
@@ -976,146 +976,162 @@
     let depositsList = getStored('admin_deposits', []);
     let withdrawalsList = getStored('admin_withdrawals', []);
 
-    // Official Web App Firebase Config for pludo-37e2c
-    const firebaseConfig = {
-      apiKey: "AIzaSyAn-y9WUVmOJzO0DkIT4Q-hBG10kH3Y6eY",
-      authDomain: "pludo-37e2c.firebaseapp.com",
-      databaseURL: "https://pludo-37e2c-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "pludo-37e2c",
-      storageBucket: "pludo-37e2c.firebasestorage.app",
-      messagingSenderId: "265688834040",
-      appId: "1:265688834040:web:33358c374f5f65cea8c00d"
-    };
+    // 🔄 1-Click Clear Cache & Live Re-fetch Function
+    function clearAllCacheAndRefreshData() {
+      if (confirm('🔄 Are you sure you want to clear all local cache and re-fetch fresh data live from Firebase?')) {
+        // Clear cached lists from localStorage
+        localStorage.removeItem('admin_users');
+        localStorage.removeItem('admin_deposits');
+        localStorage.removeItem('admin_withdrawals');
+        localStorage.removeItem('admin_upi');
 
-    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
+        // Reset memory containers
+        usersList = [];
+        depositsList = [];
+        withdrawalsList = [];
+
+        // Update UI tables to Loading Spinners
+        const uBody = document.getElementById('usersTableBody');
+        const dBody = document.getElementById('depositsTableBody');
+        const wBody = document.getElementById('withdrawalsTableBody');
+        const aBody = document.getElementById('activityLogTable');
+
+        if (uBody) uBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--gold); padding: 24px;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching fresh players live from Firebase...</td></tr>';
+        if (dBody) dBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--gold); padding: 24px;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching fresh deposits live from Firebase...</td></tr>';
+        if (wBody) wBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--gold); padding: 24px;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching fresh withdrawals live from Firebase...</td></tr>';
+        if (aBody) aBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--gold); padding: 24px;"><i class="fa-solid fa-spinner fa-spin"></i> Fetching fresh activity logs live from Firebase...</td></tr>';
+
+        // Re-attach live Firebase listeners
+        setupLiveFirebaseListeners();
+
+        alert('✅ All Local Cache Cleared Successfully!\n\nFresh real-time data is now downloading live from Firebase Firestore.');
+      }
     }
 
-    const AUTHORIZED_ADMIN_UID = 'ktC19AjptoShu7S7nLVBqKrN8lT2';
+    // Official Web App Firebase Config for pludo-37e2c
+    function getFirebaseConfig() {
+      const stored = localStorage.getItem('admin_firebase_config');
+      if (stored) {
+        try { return JSON.parse(stored); } catch(e) {}
+      }
+      return {
+        apiKey: "AIzaSyAn-y9WUVmOJzO0DkIT4Q-hBG10kH3Y6eY",
+        authDomain: "pludo-37e2c.firebaseapp.com",
+        databaseURL: "https://pludo-37e2c-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "pludo-37e2c",
+        storageBucket: "pludo-37e2c.firebasestorage.app",
+        messagingSenderId: "265688834040",
+        appId: "1:265688834040:web:33358c374f5f65cea8c00d"
+      };
+    }
+
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+      const config = getFirebaseConfig();
+      if (config && config.projectId) {
+        firebase.initializeApp(config);
+      }
+    }
 
     let fsUsersUnsub = null;
     let fsDepositsUnsub = null;
     let fsWithdrawalsUnsub = null;
     let fsConfigUnsub = null;
+    let fsNotificationsUnsub = null;
+
+    // Verify Admin status in Firestore (/users/{uid} document: isAdmin === true || admin === true)
+    async function checkUserAdminStatus(user) {
+      if (!user || typeof firebase === 'undefined' || !firebase.firestore) return false;
+      try {
+        const docSnap = await firebase.firestore().collection('users').doc(user.uid).get();
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          if (data.isAdmin === true || data.admin === true) {
+            return true;
+          }
+        }
+        // Fallback: check custom claims
+        const idToken = await user.getIdTokenResult();
+        if (idToken && idToken.claims && idToken.claims.admin === true) {
+          return true;
+        }
+      } catch (err) {
+        console.warn('Admin check notice:', err.message);
+      }
+      return false;
+    }
 
     // Initialize Login & Session Check with Live Firebase Database Listeners
     window.addEventListener('DOMContentLoaded', () => {
-      const loggedIn = localStorage.getItem('admin_logged_in');
-      const storedUid = localStorage.getItem('admin_uid');
-
-      if (loggedIn === 'true' && storedUid === AUTHORIZED_ADMIN_UID) {
-        document.getElementById('loginOverlay').style.display = 'none';
-      } else {
-        document.getElementById('loginOverlay').style.display = 'flex';
-      }
-
-      // Observer for Firebase Auth State with Custom Claim & Admin UID check
+      // Observer for Firebase Auth State
       if (typeof firebase !== 'undefined' && firebase.auth) {
-        firebase.auth().onAuthStateChanged((user) => {
+        firebase.auth().onAuthStateChanged(async (user) => {
           if (user) {
-            user.getIdTokenResult().then((idTokenResult) => {
-              if (user.uid === AUTHORIZED_ADMIN_UID || (idTokenResult.claims && idTokenResult.claims.admin === true)) {
-                localStorage.setItem('admin_logged_in', 'true');
-                localStorage.setItem('admin_uid', user.uid);
-                document.getElementById('loginOverlay').style.display = 'none';
-                setupLiveFirebaseListeners();
-              } else {
-                firebase.auth().signOut();
-                localStorage.removeItem('admin_logged_in');
-                localStorage.removeItem('admin_uid');
-                document.getElementById('loginOverlay').style.display = 'flex';
-              }
-            }).catch(() => {
-              if (user.uid === AUTHORIZED_ADMIN_UID) {
-                localStorage.setItem('admin_logged_in', 'true');
-                localStorage.setItem('admin_uid', user.uid);
-                document.getElementById('loginOverlay').style.display = 'none';
-                setupLiveFirebaseListeners();
-              }
-            });
+            const isAdmin = await checkUserAdminStatus(user);
+            if (isAdmin) {
+              localStorage.setItem('admin_logged_in', 'true');
+              localStorage.setItem('admin_uid', user.uid);
+              localStorage.setItem('admin_email', user.email || '');
+              document.getElementById('loginOverlay').style.display = 'none';
+              setupLiveFirebaseListeners();
+            } else {
+              firebase.auth().signOut();
+              localStorage.removeItem('admin_logged_in');
+              localStorage.removeItem('admin_uid');
+              document.getElementById('loginOverlay').style.display = 'flex';
+              alert('⛔ ACCESS DENIED!\n\nUser account (' + (user.email || user.uid) + ') does not have admin permissions.\nIn Firestore collection "users", set "isAdmin: true" on document (' + user.uid + ') to grant Admin panel access.');
+            }
+          } else {
+            localStorage.removeItem('admin_logged_in');
+            localStorage.removeItem('admin_uid');
+            document.getElementById('loginOverlay').style.display = 'flex';
           }
         });
+      } else {
+        document.getElementById('loginOverlay').style.display = 'flex';
       }
 
       document.getElementById('currentUpiDisplay').innerText = adminUPI;
       document.getElementById('adminUpiInput').value = adminUPI;
 
-      // START LIVE FIREBASE REALTIME DATABASE LISTENERS
-      setupLiveFirebaseListeners();
-
       renderAllData();
     });
 
-    // Form Login Submit (Direct Firebase Auth + Custom Claim & Authorized UID Check)
-    document.getElementById('loginForm')?.addEventListener('submit', (e) => {
+    // Form Login Submit (Authenticates with Firebase Auth & verifies Firestore isAdmin field)
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const uidInput = document.getElementById('adminUid');
       const emailInput = document.getElementById('adminEmail');
       const passInput = document.getElementById('adminPassword');
 
-      const enteredUid = uidInput ? uidInput.value.trim() : AUTHORIZED_ADMIN_UID;
       const email = emailInput ? emailInput.value.trim() : '';
       const pass = passInput ? passInput.value.trim() : '';
 
       const btnText = document.getElementById('loginBtnText');
       if (btnText) btnText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> AUTHENTICATING WITH FIREBASE...';
 
-      // 1. Authenticate with Firebase Authentication
       if (typeof firebase !== 'undefined' && firebase.auth) {
-        firebase.auth().signInWithEmailAndPassword(email, pass)
-          .then((userCredential) => {
-            const user = userCredential.user;
-            if (user) {
-              user.getIdTokenResult().then((tokenResult) => {
-                const isAdminClaim = tokenResult.claims && tokenResult.claims.admin === true;
-                if (user.uid === AUTHORIZED_ADMIN_UID || isAdminClaim) {
-                  localStorage.setItem('admin_logged_in', 'true');
-                  localStorage.setItem('admin_uid', user.uid);
-                  localStorage.setItem('admin_email', user.email);
-                  document.getElementById('loginOverlay').style.display = 'none';
-                  alert('✅ Admin Auth Successful!\n\nLogged in as: ' + user.email + '\n(Admin UID: ' + user.uid + ')');
-                } else {
-                  firebase.auth().signOut();
-                  alert('⛔ ACCESS DENIED!\n\nYour account (' + user.email + ') does not have Admin privileges or Custom Claims.');
-                }
-              }).catch((err) => {
-                if (user.uid === AUTHORIZED_ADMIN_UID) {
-                  localStorage.setItem('admin_logged_in', 'true');
-                  localStorage.setItem('admin_uid', user.uid);
-                  localStorage.setItem('admin_email', user.email);
-                  document.getElementById('loginOverlay').style.display = 'none';
-                  alert('✅ Firebase Auth Successful for Primary Admin UID!');
-                } else {
-                  firebase.auth().signOut();
-                  alert('⛔ ACCESS DENIED!\n\nFailed to verify admin claims: ' + err.message);
-                }
-              });
-            }
-          })
-          .catch((error) => {
-            // Local dev fallback for authorized Admin UID
-            if (enteredUid === AUTHORIZED_ADMIN_UID && email.length >= 5 && pass.length >= 4) {
+        try {
+          const userCredential = await firebase.auth().signInWithEmailAndPassword(email, pass);
+          const user = userCredential.user;
+          if (user) {
+            const isAdmin = await checkUserAdminStatus(user);
+            if (isAdmin) {
               localStorage.setItem('admin_logged_in', 'true');
-              localStorage.setItem('admin_uid', AUTHORIZED_ADMIN_UID);
-              localStorage.setItem('admin_email', email);
+              localStorage.setItem('admin_uid', user.uid);
+              localStorage.setItem('admin_email', user.email || '');
               document.getElementById('loginOverlay').style.display = 'none';
-              alert('✅ Local Auth Granted for Authorized Admin UID: ' + AUTHORIZED_ADMIN_UID + '\nEmail: ' + email);
+              setupLiveFirebaseListeners();
+              alert('✅ Admin Auth Successful!\n\nLogged in as: ' + user.email + '\n(UID: ' + user.uid + ')');
             } else {
-              alert('❌ Firebase Auth Error: ' + error.message + '\n\nPlease verify your email and password in Firebase Authentication Console.');
+              await firebase.auth().signOut();
+              localStorage.removeItem('admin_logged_in');
+              localStorage.removeItem('admin_uid');
+              alert('⛔ ACCESS DENIED!\n\nYour account (' + email + ') is not marked as Admin in Firestore.\nIn collection "users", set "isAdmin: true" on document (' + user.uid + ').');
             }
-          })
-          .finally(() => {
-            if (btnText) btnText.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> VERIFY & LOGIN WITH FIREBASE';
-          });
-      } else {
-        // Local validation fallback
-        if (enteredUid === AUTHORIZED_ADMIN_UID && email.length >= 5 && pass.length >= 4) {
-          localStorage.setItem('admin_logged_in', 'true');
-          localStorage.setItem('admin_uid', AUTHORIZED_ADMIN_UID);
-          localStorage.setItem('admin_email', email);
-          document.getElementById('loginOverlay').style.display = 'none';
-        } else {
-          alert('Invalid Admin Credentials!');
+          }
+        } catch (error) {
+          alert('❌ Firebase Auth Error: ' + error.message + '\n\nPlease verify your email and password in Firebase Authentication.');
+        } finally {
+          if (btnText) btnText.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> VERIFY & LOGIN WITH FIREBASE';
         }
       }
     });
@@ -1125,8 +1141,27 @@
         if (typeof firebase !== 'undefined' && firebase.auth) {
           firebase.auth().signOut().catch(() => { });
         }
+        // Unsubscribe active listeners
+        if (fsUsersUnsub) { fsUsersUnsub(); fsUsersUnsub = null; }
+        if (fsDepositsUnsub) { fsDepositsUnsub(); fsDepositsUnsub = null; }
+        if (fsWithdrawalsUnsub) { fsWithdrawalsUnsub(); fsWithdrawalsUnsub = null; }
+        if (fsConfigUnsub) { fsConfigUnsub(); fsConfigUnsub = null; }
+        if (fsNotificationsUnsub) { fsNotificationsUnsub(); fsNotificationsUnsub = null; }
+
+        // Clear local storage cache
         localStorage.removeItem('admin_logged_in');
         localStorage.removeItem('admin_uid');
+        localStorage.removeItem('admin_email');
+        localStorage.removeItem('admin_users');
+        localStorage.removeItem('admin_deposits');
+        localStorage.removeItem('admin_withdrawals');
+
+        // Reset memory lists so next login downloads fresh data
+        usersList = [];
+        depositsList = [];
+        withdrawalsList = [];
+        renderAllData();
+
         document.getElementById('loginOverlay').style.display = 'flex';
       }
     }
@@ -1147,6 +1182,7 @@
         'withdrawals': ['Withdrawal Requests', 'Process player winning payout requests'],
         'upiSettings': ['Deposit UPI Configuration', 'Set active Admin UPI ID for player deposits'],
         'appUpdate': ['App Update Engine', 'Manage remote APK versions and force app updates'],
+        'notifications': ['Broadcast Notifications & Offers', 'Send push notifications and promo cashback offers to players'],
         'maintenance': ['Server Maintenance Control', 'Enable or disable live server maintenance lock']
       };
 
@@ -1233,7 +1269,8 @@
               <td>${u.mobile}</td>
               <td>₹${(u.depBal || 0).toFixed(2)}</td>
               <td><strong style="color: var(--gold)">₹${(u.winBal || 0).toFixed(2)}</strong></td>
-              <td><span class="badge badge-approved">${u.winRate || '50%'}</span></td>
+              <td><strong style="color: var(--cyan)">₹${(u.bonusBal || 0).toFixed(2)}</strong></td>
+              <td><span class="badge badge-approved">${u.winRate || '0%'}</span></td>
               <td>
                 <button class="btn-action btn-view" onclick="openGameHistory('${u.id}', '${safeName}')"><i class="fa-solid fa-gamepad"></i> History</button>
               </td>
@@ -1243,7 +1280,7 @@
         } else {
           usersBody.innerHTML = `
             <tr>
-              <td colspan="8" style="text-align: center; padding: 30px; color: var(--text-dim);">
+              <td colspan="9" style="text-align: center; padding: 30px; color: var(--text-dim);">
                 <i class="fa-solid fa-users" style="margin-right: 6px; color: var(--gold);"></i> No registered players in Firebase yet. When users sign up in the 4P Ludo app, they will appear here live in real-time.
               </td>
             </tr>
@@ -1336,7 +1373,7 @@
         fsConfigUnsub = dbFs.collection('system_config').doc('app_info').onSnapshot((docSnap) => {
           if (docSnap && docSnap.exists) {
             const data = docSnap.data();
-            const upi = data.depositupi || data.depositUpi || '4pludo@upi';
+            const upi = data.depositupi || data.depositUpi || '';
             adminUPI = upi;
             setStored('admin_upi', adminUPI);
 
@@ -1384,6 +1421,7 @@
                 mobile: u.phoneNumber || u.mobile || u.email || 'N/A',
                 depBal: Number(u.depositBalance || 0),
                 winBal: Number(u.winningBalance || 0),
+                bonusBal: Number(u.bonusBalance || 0),
                 matches: Number(u.totalMatches || 0),
                 winRate: u.winRate || (u.totalMatches > 0 ? Math.round(((u.matchesWon || 0) / u.totalMatches) * 100) + '%' : '0%')
               });
@@ -1440,6 +1478,34 @@
             renderAllData();
           }
         }, err => console.warn('Firestore withdrawals notice (Check Firebase Rules):', err.message));
+
+        // 5. Firestore Notifications Collection (/notifications) - Live Log Listener
+        fsNotificationsUnsub = dbFs.collection('notifications').onSnapshot((snapshot) => {
+          const notifTable = document.getElementById('notificationsTableBody');
+          if (notifTable && snapshot && !snapshot.empty) {
+            const fsNotifs = [];
+            snapshot.forEach(doc => {
+              const n = doc.data();
+              fsNotifs.push({
+                id: doc.id,
+                userId: n.userId || 'all',
+                type: n.type || 'alert',
+                title: n.title || '',
+                body: n.body || '',
+                date: n.date || (n.timestamp && n.timestamp.toDate ? n.timestamp.toDate().toLocaleString() : 'Recent')
+              });
+            });
+            notifTable.innerHTML = fsNotifs.map(n => `
+              <tr>
+                <td><code style="color: var(--gold); font-weight: bold;">${n.userId}</code></td>
+                <td><span class="badge badge-approved">${n.type.toUpperCase()}</span></td>
+                <td><strong>${n.title}</strong></td>
+                <td style="white-space: normal; max-width: 320px;">${n.body}</td>
+                <td>${n.date}</td>
+              </tr>
+            `).join('');
+          }
+        }, err => console.warn('Firestore notifications notice (Check Firebase Rules):', err.message));
       }
 
       // ==========================================
